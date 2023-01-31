@@ -1,0 +1,26 @@
+#+TITLE: lang parser
+#+DATE: 2023-01-30
+parsec-inspired elisp pkg
+
+* Installation
+#+begin_src emacs-lisp
+  (add-to-list 'load-path "/path/to/lp")
+  (require 'lp)
+#+end_src
+
+* Usage
+#+name: parse-k
+#+begin_src emacs-lisp
+  (defun parse-k (k)
+    "parse some k"
+        (lp-with-input k
+          (let ((f "+-*%&|<>=~!,@?^#_$")
+                (g '("'/\\")))
+            (lp-or (lp-n)
+             (lp-c-is-in f)
+             (lp-c-is-in g)))))
+#+end_src
+* Resources
+- [[https://github.com/cute-jumper/parsec.el][parsec.el]]
+- [[https://github.com/jwiegley/emacs-pl][emacs-pl]]
+- [[https://hackage.haskell.org/package/parsec][parsec]]
