@@ -1,5 +1,5 @@
 #+TITLE: lang parser
-#+DATE: 2023-01-30
+#+DATE: 2023-01-31
 parsec-inspired elisp pkg
 
 * Installation
@@ -14,11 +14,13 @@ parsec-inspired elisp pkg
   (defun parse-k (k)
     "parse some k"
         (lp-with-input k
-          (let ((f "+-*%&|<>=~!,@?^#_$")
-                (g '("'/\\")))
-            (lp-or (lp-n)
-             (lp-c-is-in f)
-             (lp-c-is-in g)))))
+          (let ((f (lp-s2l "+-*%&|<>=~!,@?^#_$"))
+                (g (lp-s2l "'/\\"))
+                (com ";.*"))
+            (lp-or (lp-c-l f)
+                   (lp-c-l g)
+                   (lp-re com)
+                   (lp-n)))))
 #+end_src
 * Resources
 - [[https://github.com/cute-jumper/parsec.el][parsec.el]]

@@ -32,15 +32,33 @@
   :tag "lp"
   :group 'development)
 
-(defvar lp-last-err nil)
+(defvar lp-last-err nil
+  "The last error returned by any `lp' parser.")
 
-(defvar lp-log-level 0)
+(defcustom lp-charset 'ascii
+  "The charset used to parse stuff."
+  :group 'lp
+  :type 'symbol)
 
-(defvar lp-input-buffer "*lp:input*")
+(defcustom lp-log-enable nil
+  "Custom log"
+  :group 'lp
+  :type 'boolean)
 
-(defvar lp-log-buffer "*lp:log*")
+(defcustom lp-log-buffer "*lp:log*"
+  "`lp' log buffer."
+  :group 'lp
+  :type 'string)
 
-(defvar lp-output-buffer "*lp:output*")
+(defcustom lp-input-buffer "*lp:input*"
+  "`lp' input buffer."
+  :group 'lp
+  :type 'string)
+
+(defcustom lp-output-buffer "*lp:output*"
+  "`lp' output buffer."
+  :group 'lp
+  :type 'string)
 
 (defun lp-eof-or-char-s ()
   (let ((c (char-after)))
@@ -55,8 +73,6 @@
 (defun lp-err2 (expected found)
   (lp-err (format "Found '%s' -> Expected '%s'"
 		      found expected)))
-
-(define-error 'lp-err "an lp error occurred")
 
 (defun lp-err-p (obj)
   (and (consp obj)
@@ -98,7 +114,7 @@
     (lp-stop :expected "char"
 	     :found (lp-eof-or-char-s))))
 
-(defun lp-sat (pred)
+(defun lp-p (pred)
   "Parse any character satisfying predicate PRED."
   (let ((next (char-after)))
     (if (and (not (eobp))
@@ -136,12 +152,18 @@
 	(setq re-str (concat re-strg "^"))))
     (concat re-head re-str re-end)))
 
-(defmacro lp-c-is-in (&rest ch)
+(defun lp-c-l (chars)
   "Return the parsed character if the current char is in the list of
 CHARS, else return nil."
+  (let* ((sexp '(lp-or))
+	 (chars (mapcar (lambda (c) (list #'lp-c (lp-c-de c))) chars)))
+    (append sexp chars)))
+
+(defmacro lp-c-in (&rest chars)
+  "Return the current character if it is a member of CHARS."
   (let ((sexp '(lp-or))
-	(pars (mapcar (lambda (c) (list #'lp-c c)) ch)))
-    (append sexp pars)))
+	(parsers (mapcar (lambda (c) (list #'lp-c c)) chars)))
+    (append sexp parsers)))
 
 (defun lp-c-not-in (&rest ch)
   "Return the parsed character if the current char is not in the
@@ -180,6 +202,10 @@ Does not account for other notations (hex, scientific, binary)"
 (defsubst lp-a ()
   "Parse any English letter."
   (lp-re "[a-zA-Z]"))
+
+(defsubst lp-uuid ())
+
+(defsubst lp-url ())
 
 (defsubst lp-d ()
   "Parse any digit."
@@ -228,7 +254,7 @@ consumed input or there are no more parsers to try."
 (defmacro lp-try (par)
   "Try parser PAR, and pretend that no input is consumed on error."
   (let ((pt (make-symbol "pt"))
-	(err (make-symbol "err")))
+	(err (make-symbol "lp-err")))
     `(let ((,pt (point)))
        (lp-unwrap-err ,err
 		      (lp-and ,par)
@@ -305,7 +331,7 @@ consumed input or there are no more parsers to try."
   "Apply the PARSER one or more times and return a list of the results."
   `(cons ,parser (lp-many ,parser)))
 
-(defsubst lp-list-to-string (l)
+(defsubst lp-l2s (l)
   (if (stringp l)
       l
     (mapconcat #'identity l "")))
@@ -356,10 +382,10 @@ meaning as `lp-many-till'."
     (cond
      ((eq type :both)
       `(let ((,res-sym (lp-many-till ,parser ,end ,type)))
-         (cons (lp-list-to-string (car ,res-sym))
-               (lp-list-to-string (cdr ,res-sym)))))
+         (cons (lp-l2s (car ,res-sym))
+               (lp-l2s (cdr ,res-sym)))))
      (t
-      `(lp-list-to-string (lp-many-till ,parser ,end ,type))))))
+      `(lp-l2s (lp-many-till ,parser ,end ,type))))))
 
 (defalias 'lp-many-till-s 'lp-many-till-as-string)
 
@@ -421,7 +447,7 @@ Return a list of N values returned by PARSER."
 (defmacro lp-count-as-string (n parser)
   "Parse N occurrences of PARSER.
 Return the N values returned by PARSER as a string."
-  `(lp-list-to-string (lp-count ,n ,parser)))
+  `(lp-l2s (lp-count ,n ,parser)))
 
 (defalias 'lp-count-s 'lp-count-as-string)
 
@@ -449,7 +475,7 @@ Haskell's Parsec."
 (defmacro lp-peek (parser)
   "Apply PARSER without consuming any input.
 When PARSER succeeds, the result of the PARSER is returned.
-Otherwise, the return value is an error.  Use `lp-error-p' on
+Otherwise, the return value is an error.  Use `lp-err-p' on
 the return value to see whether the PARSER fails or not.  Use
 `lp-peek-p' if you want nil to be returned when PARSER fails.
 
@@ -465,7 +491,7 @@ in Emacs Lisp."
   "Same as `lp-peek' except a nil is returned when the PARSER fails."
   (let ((res-sym (make-symbol "res")))
     `(let ((,res-sym (lp-peek ,parser)))
-       (unless (lp-error-p ,res-sym)
+       (unless (lp-err-p ,res-sym)
          ,res-sym))))
 
 (defmacro lp-query (parser &rest args)
@@ -550,14 +576,26 @@ Otherwise, return `(Just . p)' where p is the result of PARSER."
   (lp-or (lp-eol) (lp-eof)))
 
 ;;; Coercions
-(defalias 'lp-s2l 'string-to-list)
+
+(defun lp-c-de (n)
+  "Decode codepoint N using `lp-charset'"
+  (decode-char lp-charset n))
+
+(defun lp-c-en (c)
+  "Encode character C to codepoint using `lp-charset'."
+  (encode-char c lp-charset))
+
+(defun lp-s2l (s)
+  "Return a list of chars in string S."
+  (mapcar #'lp-c-de (append s nil)))
+
 (defalias 'lp-s2v 'string-to-vector)
 (defalias 'lp-s2c 'string-to-char)
 
 ;;; Entry
 (defmacro lp-start (&rest body)
-  "Eval BODY and return the results or an `lp-error'."
-  `(catch 'lp-failed ,@body))
+  "Eval BODY and return the results or an `lp-err'."
+  `(catch 'lp-err ,@body))
 
 (defmacro lp-with-input (input &rest parsers)
   "With INPUT, start parsing by applying PARSERS sequentially."
