@@ -114,7 +114,7 @@
     (lp-stop :expected "char"
 	     :found (lp-eof-or-char-s))))
 
-(defun lp-p (pred)
+(defun lp-sat (pred)
   "Parse any character satisfying predicate PRED."
   (let ((next (char-after)))
     (if (and (not (eobp))
@@ -138,18 +138,18 @@
 	(re-end "")
 	caret-p)
     (dolist (c ch)
-      (cond c
-	    ((char-equal c ?\]) (setq re-head "]"))
-	    ((char-equal c ?-) (setq re-end "-"))
-	    ((char-equal c ?^) (setq caret-p t))
-	    (t (setq re-str (concat re-str (char-to-string c))))))
+      (cond
+       ((char-equal c ?\]) (setq re-head "]"))
+       ((char-equal c ?-) (setq re-end "-"))
+       ((char-equal c ?^) (setq caret-p t))
+       (t (setq re-str (concat re-str (char-to-string c))))))
     (when caret-p
       (if (and
 	   (string= re-end "-")
 	   (string= re-head "")
 	   (string= re-str ""))
 	  (setq re-end "-^")
-	(setq re-str (concat re-strg "^"))))
+	(setq re-str (concat re-str "^"))))
     (concat re-head re-str re-end)))
 
 (defun lp-c-l (chars)
@@ -159,10 +159,10 @@ CHARS, else return nil."
 	 (chars (mapcar (lambda (c) (list #'lp-c (lp-c-de c))) chars)))
     (append sexp chars)))
 
-(defmacro lp-c-in (&rest chars)
+(defmacro lp-c-in (&rest ch)
   "Return the current character if it is a member of CHARS."
   (let ((sexp '(lp-or))
-	(parsers (mapcar (lambda (c) (list #'lp-c c)) chars)))
+	(parsers (mapcar (lambda (c) (list #'lp-c c)) ch)))
     (append sexp parsers)))
 
 (defun lp-c-not-in (&rest ch)
@@ -249,7 +249,7 @@ consumed input or there are no more parsers to try."
 
 (defmacro lp-coll-s (&rest args)
   "Return the results of all parsers in ARGS as a string."
-  `(lp-list-s (lp-coll ,@args)))
+  `(lp-l2s (lp-coll ,@args)))
 
 (defmacro lp-try (par)
   "Try parser PAR, and pretend that no input is consumed on error."
@@ -260,7 +260,7 @@ consumed input or there are no more parsers to try."
 		      (lp-and ,par)
 		      (goto-char ,pt)))))
 
-(defmacro lp-look-ahead (par)
+(defmacro lp-lookahead (par)
   "Try parser PAR, and pretend that no input is consumed on success."
   (let ((pt (make-symbol "pt")))
     `(let ((,pt (point)))
@@ -324,7 +324,7 @@ consumed input or there are no more parsers to try."
        (lp-protect-atom lp-many
          (lp-start
           (while (not (eobp))
-            (push (lp-make-atom lp-many ,parser) ,res-sym))))
+            (push (lp-atom lp-many ,parser) ,res-sym))))
        (nreverse ,res-sym))))
 
 (defmacro lp-many1 (parser)
@@ -358,7 +358,7 @@ Used to scan comments:
 
 > (lp-and
 >   (lp-str \"<--\")
->   (lp-many-till (lp-any-ch) (lp-str \"-->\")))"
+>   (lp-many-till (lp-c*) (lp-str \"-->\")))"
 
   (let ((res-sym (make-symbol "results"))
         (end-res-sym (make-symbol "end-result")))
@@ -392,13 +392,13 @@ meaning as `lp-many-till'."
 (defmacro lp-until (parser &optional type)
   "Parse any characters until PARSER succeeds.
 TYPE has the same meaning as `lp-many-till'."
-  `(lp-many-till (lp-any-ch) ,parser ,type))
+  `(lp-many-till (lp-c*) ,parser ,type))
 
 (defmacro lp-until-as-string (parser &optional type)
   "Parse any characters until PARSER succeeds.
 Return the result of either part as a string.  TYPE has the same
 meaning as `lp-many-till'."
-  `(lp-many-till-as-string (lp-any-ch) ,parser ,type))
+  `(lp-many-till-as-string (lp-c*) ,parser ,type))
 
 (defalias 'lp-until-s 'lp-until-as-string)
 
@@ -412,7 +412,7 @@ meaning as `lp-many-till'."
                  (throw 'lp-failed-not-followed-by-out
                         (lp-or (throw 'lp-failed-not-followed-by-in (lp-try ,parser))
                                    nil)))))
-          (lp-stop :message (format "Unexpected followed by: %s" ,res-sym)))))))
+          (lp-stop :msg (format "Unexpected followed by: %s" ,res-sym)))))))
 
 (defmacro lp-endby (parser end)
   "Parse zero or more occurrences of PARSER, separated and ended by END.
@@ -553,11 +553,11 @@ Otherwise, return `(Just . p)' where p is the result of PARSER."
 ;;; Lines
 (defun lp-newline ()
   "Parse a newline character \"\\n\"."
-  (lp-ch ?\n))
+  (lp-c ?\n))
 
 (defun lp-crlf ()
   "Parse a carriage return (\'\\r\') followed by a newline \"\\n\"."
-  (lp-and (lp-ch ?\r) (lp-ch ?\n)))
+  (lp-and (lp-c ?\r) (lp-c ?\n)))
 
 (defun lp-eol ()
   "Parse a newline or a CRLF and return \"\\n\"."
@@ -595,7 +595,7 @@ Otherwise, return `(Just . p)' where p is the result of PARSER."
 ;;; Entry
 (defmacro lp-start (&rest body)
   "Eval BODY and return the results or an `lp-err'."
-  `(catch 'lp-err ,@body))
+  `(catch 'lp-fail ,@body))
 
 (defmacro lp-with-input (input &rest parsers)
   "With INPUT, start parsing by applying PARSERS sequentially."
