@@ -20,8 +20,18 @@
 
 ;;; Commentary:
 
-;; A parser-combinator library for Emacs. Inspired by John Wiegley's
-;; pl.el which is inspired by Haskell's parsec.
+;; A parser-combinator library for Emacs. Inspired by parsec.el which
+;; is inspired by John Wiegley's pl.el which is inspired by Haskell's
+;; parsec.
+
+;; Our goals include:
+
+;; - configurable charsets
+;; - configurable logging/errors
+;; - eieio-compat
+;; - better query engine
+;; - configurable output
+;; - more primitives (uri, uuid, paths, sexp, markup)
 
 ;;; Code:
 (eval-when-compile 
@@ -99,6 +109,8 @@
 (defun lp-c (c)
   "Parse a single character C."
   (let ((next (char-after)))
+    (when (integer-or-marker-p c)
+      (setq c (encode-char c lp-charset)))
     (if (and (not (eobp))
 	     (char-equal next c))
 	(progn (forward-char 1)
@@ -152,18 +164,14 @@
 	(setq re-str (concat re-str "^"))))
     (concat re-head re-str re-end)))
 
-(defun lp-c-l (chars)
-  "Return the parsed character if the current char is in the list of
-CHARS, else return nil."
-  (let* ((sexp '(lp-or))
-	 (chars (mapcar (lambda (c) (list #'lp-c (lp-c-de c))) chars)))
-    (append sexp chars)))
-
 (defmacro lp-c-in (&rest ch)
-  "Return the current character if it is a member of CHARS."
+  "Return the current character if it is a member of chars CH."
   (let ((sexp '(lp-or))
 	(parsers (mapcar (lambda (c) (list #'lp-c c)) ch)))
     (append sexp parsers)))
+
+;; (defun lp-c-in2 (&rest ch)
+;;   (lp-re (format "[%s]" (lp-make-alt (lp-s2l ch)))))
 
 (defun lp-c-not-in (&rest ch)
   "Return the parsed character if the current char is not in the
@@ -227,8 +235,8 @@ consumed input or there are no more parsers to try."
 				(lp-start
 				 (throw 'lp-or-failed
 					(lp-unwrap-err ,err
-						       (lp-atom lp-or ,p)
-						       (push (lp-err-s ,err) ,err-lst))))))
+					    (lp-atom lp-or ,p)
+					  (push (lp-err-s ,err) ,err-lst))))))
 	    pars)
 	 (lp-stop
 	  :msg
@@ -567,7 +575,7 @@ Otherwise, return `(Just . p)' where p is the result of PARSER."
   "Indicate the end of file (buffer)."
   (unless (eobp)
     (lp-stop :expected "`EOF'"
-                 :found (lp-eof-or-char-as-string))))
+                 :found (lp-eof-or-char-s))))
 
 (defalias 'lp-eof 'lp-eob)
 
@@ -587,7 +595,7 @@ Otherwise, return `(Just . p)' where p is the result of PARSER."
 
 (defun lp-s2l (s)
   "Return a list of chars in string S."
-  (mapcar #'lp-c-de (append s nil)))
+  (string-to-list s))
 
 (defalias 'lp-s2v 'string-to-vector)
 (defalias 'lp-s2c 'string-to-char)
@@ -600,8 +608,7 @@ Otherwise, return `(Just . p)' where p is the result of PARSER."
 (defmacro lp-with-input (input &rest parsers)
   "With INPUT, start parsing by applying PARSERS sequentially."
   (declare (indent 1))
-  `(with-current-buffer (get-buffer-create lp-input-buffer)
-     (erase-buffer)
+  `(with-temp-buffer
      (insert ,input)
      (goto-char (point-min))
      (lp-start

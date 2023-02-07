@@ -20,7 +20,7 @@
 
 ;;; Commentary:
 
-;;
+;; Based on parsec-tests.el.
 
 ;;; Code:
 

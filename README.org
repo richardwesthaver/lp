@@ -1,6 +1,15 @@
 #+TITLE: lang parser
-#+DATE: 2023-01-31
-parsec-inspired elisp pkg
+#+DATE: 2023-02-06
+parsec-inspired elisp pkg --
+
+Based on =parsec.el=. our goals include:
+
+- configurable charsets
+- configurable logging/errors
+- eieio-compat
+- better query engine
+- configurable output
+- more primitives (uri, uuid, paths, sexp, markup)
 
 * Installation
 #+begin_src emacs-lisp
@@ -14,13 +23,15 @@ parsec-inspired elisp pkg
   (defun parse-k (k)
     "parse some k"
         (lp-with-input k
-          (let ((f (lp-s2l "+-*%&|<>=~!,@?^#_$"))
-                (g (lp-s2l "'/\\"))
-                (com ";.*"))
-            (lp-or (lp-c-l f)
-                   (lp-c-l g)
-                   (lp-re com)
-                   (lp-n)))))
+          (let ((f "+-*%&|<>=~!,@?^#_$")
+                (g "'/\\"))
+          (lp-coll*
+           (lp-or
+            (lp-c-in2 f)
+            (lp-c-in2 g)
+            (lp-c ?\;)
+            (lp-n))
+           (lp-many-till (lp-c*) (lp-eol-or-eof))))))
 #+end_src
 * Resources
 - [[https://github.com/cute-jumper/parsec.el][parsec.el]]
